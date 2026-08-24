@@ -1,4 +1,4 @@
-import { BarChart3, Check, FileStack, KeyRound, Mail, Pencil, Plus, RefreshCw, Search, ShieldCheck, Upload, UserRoundPlus, UsersRound, X } from 'lucide-react';
+import { BarChart3, Check, FileStack, KeyRound, Mail, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Upload, UserRoundPlus, UsersRound, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 
@@ -299,38 +299,46 @@ Do not use live APIs, modules, workers, WebSockets, or embedded external applica
     </form>}
     {notice && <div className={`import-notice import-notice-${notice.kind}`} role={notice.kind === 'error' ? 'alert' : 'status'}><strong>{notice.text}</strong>{notice.detail && <span>{notice.detail}</span>}</div>}
     <PanelHeader title="Library items" body="Bundled items ship in the container. Live items were published here. Import JSON, or point a Qlik Sense table at a dataset slot, for data-separated models and reports." />
-    <div className="artifact-admin-list">{snapshot.artifacts.map((artifact) => <article key={artifact.id}>
-      <span className={`artifact-icon accent-${artifact.accent}`}><ArtifactIcon name={artifact.icon} kind={artifact.kind} /></span>
-      {editingId === artifact.id ? <form className="artifact-edit-form" onSubmit={(event) => void saveMetadata(event, artifact.id)}><label>Title<input required name="title" defaultValue={artifact.title} /></label><label>Description<input required name="description" defaultValue={artifact.description} /></label><label>Owner<input required name="owner" defaultValue={artifact.owner} /></label><label className="publish-check"><input type="checkbox" name="downloads" defaultChecked={artifact.capabilities.includes('downloads')} /> Allow generated file downloads</label><div className="icon-picker-field"><span>Icon</span><ArtifactIconPicker name="icon" defaultValue={artifact.icon ?? defaultArtifactIcon(artifact.kind)} /></div><div className="artifact-edit-actions"><button className="button primary" disabled={Boolean(uploading)}><Check size={15} /> Save</button><button className="button" type="button" onClick={() => setEditingId('')}><X size={15} /> Cancel</button></div></form> : <div><h3>{artifact.title}</h3><p>{artifact.slug} · owned by {artifact.owner}</p></div>}
-      <span className="version-pill">v{artifact.version}</span>
-      <span className="source-pill">{artifact.source === 'uploaded' ? artifact.isActive === false ? 'Unpublished' : 'Published live' : 'Ships in the container'}</span>
-      <div className="artifact-admin-actions">
-        {artifact.source === 'uploaded' && <>
-          <button className="button" disabled={Boolean(uploading)} onClick={() => setEditingId(artifact.id)}><Pencil size={15} /> Edit details</button>
-          <label className="button">Replace HTML<input hidden disabled={Boolean(uploading)} type="file" accept=".html,.htm,.zip,text/html,application/zip" onChange={(event) => { const input = event.currentTarget; void replaceBundle(artifact.id, input.files?.[0]).finally(() => { input.value = ''; }); }} /></label>
-          <button className="text-button danger" disabled={Boolean(uploading)} onClick={() => { void (async () => { if (await confirm({ title: `Permanently delete ${artifact.title}?`, body: 'Its assignments, datasets, notifications, and stored files will also be removed. This cannot be undone.', confirmLabel: 'Delete', danger: true })) await deleteArtifact(artifact.id, artifact.title); })(); }}>Delete</button>
+    <div className="artifact-admin-list">{snapshot.artifacts.map((artifact) => {
+      const datasetKeys = artifact.datasetKeys.concat(snapshot.qlikBindings.filter((item) => item.artifactId === artifact.id && !artifact.datasetKeys.includes(item.datasetKey)).map((item) => item.datasetKey));
+      const primaryDatasetKey = datasetKeys[0];
+      const primaryBinding = snapshot.qlikBindings.find((item) => item.artifactId === artifact.id && item.datasetKey === primaryDatasetKey);
+      return <article key={artifact.id}>
+        <span className={`artifact-icon accent-${artifact.accent}`}><ArtifactIcon name={artifact.icon} kind={artifact.kind} /></span>
+        {editingId === artifact.id ? <form className="artifact-edit-form" onSubmit={(event) => void saveMetadata(event, artifact.id)}><label>Title<input required name="title" defaultValue={artifact.title} /></label><label>Description<input required name="description" defaultValue={artifact.description} /></label><label>Owner<input required name="owner" defaultValue={artifact.owner} /></label><label className="publish-check"><input type="checkbox" name="downloads" defaultChecked={artifact.capabilities.includes('downloads')} /> Allow generated file downloads</label><div className="icon-picker-field"><span>Icon</span><ArtifactIconPicker name="icon" defaultValue={artifact.icon ?? defaultArtifactIcon(artifact.kind)} /></div><div className="artifact-edit-actions"><button className="button primary" disabled={Boolean(uploading)}><Check size={15} /> Save</button><button className="button" type="button" onClick={() => setEditingId('')}><X size={15} /> Cancel</button></div></form> : <div className="artifact-admin-copy"><h3>{artifact.title}</h3><p>{artifact.slug} · owned by {artifact.owner}{primaryDatasetKey ? ` · ${qlikSourceStatus(primaryBinding)}` : ''}</p></div>}
+        {editingId !== artifact.id && <>
+          <div className="artifact-admin-badges"><span className="version-pill">v{artifact.version}</span><span className="source-pill">{artifact.source === 'uploaded' ? artifact.isActive === false ? 'Unpublished' : 'Published live' : 'Ships in the container'}</span></div>
+          <div className="artifact-admin-actions">
+            {primaryDatasetKey && <QlikSourceLaunch artifact={artifact} datasetKey={primaryDatasetKey} binding={primaryBinding} />}
+            {artifact.source === 'uploaded' && <button className="button" disabled={Boolean(uploading)} onClick={() => setEditingId(artifact.id)}><Pencil size={15} /> Edit details</button>}
+            {(artifact.source === 'uploaded' || datasetKeys.length > 0) && <details className="artifact-actions-menu">
+              <summary role="button" aria-label={`More actions for ${artifact.title}`} title="More actions"><MoreHorizontal size={18} /></summary>
+              <div className="artifact-actions-popover">
+                {artifact.source === 'uploaded' && <label>Replace HTML<input hidden disabled={Boolean(uploading)} type="file" accept=".html,.htm,.zip,text/html,application/zip" onChange={(event) => { const input = event.currentTarget; void replaceBundle(artifact.id, input.files?.[0]).finally(() => { input.value = ''; }); }} /></label>}
+                {datasetKeys.map((datasetKey, index) => { const busy = uploading === `${artifact.id}:${datasetKey}`; const seeded = snapshot.datasets.some((dataset) => dataset.artifactId === artifact.id && dataset.datasetKey === datasetKey && dataset.status === 'active'); const label = artifact.kind === 'tool' ? 'model' : 'report'; const binding = snapshot.qlikBindings.find((item) => item.artifactId === artifact.id && item.datasetKey === datasetKey); return <div key={datasetKey}>
+                  <label>{busy ? 'Importing…' : seeded ? `Replace ${label} JSON` : `Import ${label} JSON`}<input hidden disabled={Boolean(uploading)} type="file" accept="application/json,.json" onChange={(event) => { const input = event.currentTarget; void upload(artifact.id, datasetKey, input.files?.[0]).finally(() => { input.value = ''; }); }} /></label>
+                  {index > 0 && <QlikSourceLaunch artifact={artifact} datasetKey={datasetKey} binding={binding} />}
+                </div>; })}
+                {artifact.source === 'uploaded' && <button className="danger" disabled={Boolean(uploading)} onClick={() => { void (async () => { if (await confirm({ title: `Permanently delete ${artifact.title}?`, body: 'Its assignments, datasets, notifications, and stored files will also be removed. This cannot be undone.', confirmLabel: 'Delete', danger: true })) await deleteArtifact(artifact.id, artifact.title); })(); }}>Delete</button>}
+              </div>
+            </details>}
+          </div>
         </>}
-        {artifact.datasetKeys.concat(snapshot.qlikBindings.filter((item) => item.artifactId === artifact.id && !artifact.datasetKeys.includes(item.datasetKey)).map((item) => item.datasetKey)).map((datasetKey) => { const busy = uploading === `${artifact.id}:${datasetKey}`; const seeded = snapshot.datasets.some((dataset) => dataset.artifactId === artifact.id && dataset.datasetKey === datasetKey && dataset.status === 'active'); const label = artifact.kind === 'tool' ? 'model' : 'report'; const binding = snapshot.qlikBindings.find((item) => item.artifactId === artifact.id && item.datasetKey === datasetKey); return <div className="dataset-slot" key={datasetKey}>
-          <label className="button">{busy ? 'Importing…' : seeded ? `Replace ${label} JSON` : `Import ${label} JSON`}<input hidden disabled={Boolean(uploading)} type="file" accept="application/json,.json" onChange={(event) => { const input = event.currentTarget; void upload(artifact.id, datasetKey, input.files?.[0]).finally(() => { input.value = ''; }); }} /></label>
-          <QlikSourceLaunch artifact={artifact} datasetKey={datasetKey} binding={binding} />
-        </div>; })}
-      </div>
-    </article>)}</div>
+      </article>;
+    })}</div>
   </>;
 }
 
 function QlikSourceLaunch({ artifact, datasetKey, binding }: { artifact: ArtifactSummary; datasetKey: string; binding?: QlikDatasetBinding }) {
-  const status = binding?.lastError
-    ? `Last error: ${binding.lastError}`
-    : binding?.lastPulledAt
-      ? `Last pulled ${new Date(binding.lastPulledAt).toLocaleString('en-GB')} UTC · ${binding.lastRecordCount ?? 0} rows`
-      : 'Find a Qlik table and transform it in the query editor. JSON import still works as a fallback.';
-  return <div className="qlik-source-launch">
-    <Link className="button" to={`/admin/artifacts/${encodeURIComponent(artifact.id)}/datasets/${encodeURIComponent(datasetKey)}/qlik`}>
-      {binding ? 'Open Qlik editor' : 'Qlik editor'}
-    </Link>
-    <p className="qlik-source-status">{status}</p>
-  </div>;
+  return <Link className="button" to={`/admin/artifacts/${encodeURIComponent(artifact.id)}/datasets/${encodeURIComponent(datasetKey)}/qlik`}>
+    {binding ? 'Open Qlik editor' : 'Qlik editor'}
+  </Link>;
+}
+
+function qlikSourceStatus(binding?: QlikDatasetBinding) {
+  if (binding?.lastError) return `Last error: ${binding.lastError}`;
+  if (binding?.lastPulledAt) return `Last pulled ${new Date(binding.lastPulledAt).toLocaleString('en-GB')} UTC · ${binding.lastRecordCount ?? 0} rows`;
+  return 'Find a Qlik table and transform it in the query editor';
 }
 
 function AuditPanel({ snapshot }: { snapshot: AdminSnapshot }) {

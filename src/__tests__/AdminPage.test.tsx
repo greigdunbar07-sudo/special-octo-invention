@@ -268,6 +268,7 @@ describe('AdminPage access changes', () => {
     await screen.findByText('Live report');
     expect(screen.getByText('Unpublished')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: 'More actions for Live report' }));
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     await confirmDialog(user, 'Delete');
 

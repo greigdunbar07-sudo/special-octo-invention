@@ -187,11 +187,16 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .cowork-brief pre { margin:8px 0 0; padding:12px; background:white; border:1px solid var(--line); border-radius:8px; white-space:pre-wrap; font-size:11px; }
 .publish-form .button { justify-self:start; }
 .source-pill { display:inline-block; padding:4px 8px; border-radius:12px; background:#e7f2fe; color:#17407a; font-size:10px; }
-.artifact-admin-list article { grid-template-columns:auto minmax(0,1fr) auto auto; }
-.artifact-admin-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; grid-column:1 / -1; }
-.dataset-slot { display:flex; flex-wrap:wrap; gap:8px; flex:1 1 100%; justify-content:flex-end; }
-.qlik-source-launch { flex:1 1 100%; display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; }
-.qlik-source-status { margin:0; color:var(--muted); font-size:12px; }
+.artifact-admin-list article { grid-template-columns:auto minmax(220px,1fr) auto auto; min-height:68px; padding:10px 12px; gap:12px; }
+.artifact-admin-copy { min-width:0; }.artifact-admin-copy h3,.artifact-admin-copy p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.artifact-admin-badges,.artifact-admin-actions { display:flex; align-items:center; gap:7px; }
+.artifact-admin-actions { justify-content:flex-end; white-space:nowrap; }
+.artifact-actions-menu { position:relative; }
+.artifact-actions-menu summary { width:36px; height:36px; display:grid; place-items:center; border:1px solid #cfd5df; border-radius:7px; color:var(--vet-blue); cursor:pointer; list-style:none; }
+.artifact-actions-menu summary::-webkit-details-marker { display:none; }.artifact-actions-menu summary:hover,.artifact-actions-menu[open] summary { background:#f5f7fa; border-color:#aeb8c8; }
+.artifact-actions-popover { position:absolute; z-index:5; top:calc(100% + 6px); right:0; min-width:190px; padding:6px; border:1px solid var(--line); border-radius:8px; background:white; box-shadow:0 12px 30px rgba(2,22,96,.14); }
+.artifact-actions-popover label,.artifact-actions-popover button,.artifact-actions-popover a { width:100%; min-height:34px; display:flex; align-items:center; padding:8px 10px; border:0; border-radius:5px; background:transparent; color:var(--ink); text-decoration:none; font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+.artifact-actions-popover label:hover,.artifact-actions-popover button:hover,.artifact-actions-popover a:hover { background:#f5f7fa; }.artifact-actions-popover .danger { color:#a22424; }
 .portal-layout.qlik-editor-open .sidebar,
 .portal-layout.qlik-editor-open .topbar { display:none; }
 .portal-layout.qlik-editor-open .portal-main { min-height:100vh; }
@@ -284,7 +289,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .artifact-edit-form { grid-column:2 / -1; display:grid; grid-template-columns:repeat(3,minmax(150px,1fr)); gap:10px; padding:14px; border-radius:8px; background:#f5f7fa; }.artifact-edit-form label { display:grid; gap:5px; color:var(--muted); font-size:11px; }.artifact-edit-form input,.artifact-edit-form select { min-height:36px; padding:6px 8px; border:1px solid #cfd5df; border-radius:6px; background:white; color:var(--ink); }.artifact-edit-form .publish-check { display:flex; }.artifact-edit-actions { display:flex; align-items:end; gap:8px; }
 .text-button.danger { color:#a22424; }
 .text-button + .text-button { margin-left:8px; }
-@media (max-width: 620px) { .publish-form,.access-toolbar,.artifact-edit-form { grid-template-columns:1fr; }.artifact-edit-form { grid-column:1 / -1; }.assignment-summary { align-items:flex-start; flex-direction:column; } }
+@media (max-width: 620px) { .publish-form,.access-toolbar,.artifact-edit-form { grid-template-columns:1fr; }.artifact-edit-form { grid-column:1 / -1; }.assignment-summary { align-items:flex-start; flex-direction:column; }.artifact-admin-list article { grid-template-columns:auto minmax(0,1fr) auto; }.artifact-admin-badges { grid-column:2; }.artifact-admin-actions { grid-column:3; grid-row:1 / span 2; }.artifact-admin-actions>.button { width:36px; padding:0; font-size:0; }.artifact-admin-actions>.button svg { margin:0; }.artifact-admin-actions>.button:first-child:not(:has(svg)) { display:none; } }
 .library-tabs { display:flex; gap:2px; margin:0 0 18px; border-bottom:1px solid var(--line); }
 .library-tabs a { padding:10px 14px; margin-bottom:-1px; border-bottom:2px solid transparent; color:var(--muted); text-decoration:none; font-size:13px; font-weight:600; }
 .library-tabs a:hover { color:var(--vet-blue); }
