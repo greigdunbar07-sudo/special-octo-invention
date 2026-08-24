@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,6 +24,7 @@ function renderAt(path: string) {
 describe('PortalShell navigation', () => {
   afterEach(() => {
     mocks.identity.hasCompletedTour = true;
+    window.localStorage.clear();
   });
 
   it('opens the welcome tour for a first-time user', async () => {
@@ -47,7 +48,16 @@ describe('PortalShell navigation', () => {
     expect(screen.queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Tools' })).not.toBeInTheDocument();
     expect(screen.queryByText('Microsoft protected')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /pin sidebar/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('separator', { name: 'Resize sidebar' })).toHaveAttribute('aria-valuenow', '164');
+  });
+
+  it('resizes the desktop sidebar with the keyboard and persists the width', () => {
+    renderAt('/');
+    const resizer = screen.getByRole('separator', { name: 'Resize sidebar' });
+    fireEvent.keyDown(resizer, { key: 'ArrowRight' });
+    expect(resizer).toHaveAttribute('aria-valuenow', '172');
+    expect(document.querySelector('.portal-layout')).toHaveStyle({ '--sidebar': '172px' });
+    expect(window.localStorage.getItem('covetrus.portal.sidebar-width')).toBe('172');
   });
 
   it('titles the Qlik query editor and hides portal chrome', () => {
@@ -63,5 +73,10 @@ describe('PortalShell navigation', () => {
     expect(document.querySelector('.standalone-artifact')).toBeInTheDocument();
     expect(document.querySelector('.portal-layout')).not.toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Primary navigation' })).not.toBeInTheDocument();
+  });
+
+  it('gives an embedded artifact viewer the full remaining portal width', () => {
+    renderAt('/artifacts/damages-ytd');
+    expect(document.querySelector('#main-content')).toHaveClass('viewer-content');
   });
 });
