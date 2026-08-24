@@ -43,7 +43,7 @@ jobs:
       - name: Build immutable production image
         run: docker build --pull=false --tag fabric-portal:security-scan .
       - name: Scan image for high and critical vulnerabilities
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: fabric-portal:security-scan
           format: sarif
