@@ -1,0 +1,40 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/spfx-build/package-solution.schema.json",
+  "solution": {
+    "name": "Covetrus Portal POC",
+    "id": "e7343a7a-ce43-4c64-bf3f-acf1df1e1971",
+    "version": "1.0.0.0",
+    "includeClientSideAssets": true,
+    "skipFeatureDeployment": true,
+    "isDomainIsolated": false,
+    "developer": {
+      "name": "",
+      "websiteUrl": "",
+      "privacyUrl": "",
+      "termsOfUseUrl": "",
+      "mpnId": "Undefined-1.23.2"
+    },
+    "metadata": {
+      "shortDescription": {
+        "default": "Covetrus report and tools portal demonstration"
+      },
+      "longDescription": {
+        "default": "SharePoint-hosted proof of concept containing two sandboxed artifacts and synthetic demonstration data."
+      },
+      "screenshotPaths": [],
+      "videoUrl": "",
+      "categories": []
+    },
+    "features": [
+      {
+        "title": "Covetrus Portal POC Feature",
+        "description": "Makes the Covetrus Portal POC web part available on this site.",
+        "id": "c0c34371-9175-453b-bf3d-34abb4ea8a0e",
+        "version": "1.0.0.0"
+      }
+    ]
+  },
+  "paths": {
+    "zippedPackage": "solution/covetrus-portal-poc.sppkg"
+  }
+}

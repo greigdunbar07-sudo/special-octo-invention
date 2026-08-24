@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Customer Watchlist SPC</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <main><h1>Customer Watchlist SPC</h1><canvas id="spc"></canvas></main>
+  <script>
+    const RAW = { labels: ['Week 1', 'Week 2', 'Week 3'], values: [98.2, 97.9, 98.6] };
+    new Chart(document.getElementById('spc'), { type: 'line', data: { labels: RAW.labels, datasets: [{ data: RAW.values }] } });
+  </script>
+</body>
+</html>

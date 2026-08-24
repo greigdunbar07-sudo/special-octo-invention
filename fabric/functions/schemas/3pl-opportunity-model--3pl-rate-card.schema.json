@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://covetrus.internal/schemas/3pl-rate-card-v1.json",
+  "title": "3PL rate card v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["meta", "period", "vol", "opts", "rates", "prod", "scenarios", "terms", "ramp"],
+  "properties": {
+    "meta": { "type": "object", "required": ["rateCardVersion"], "properties": { "oppName": {"type":"string"}, "preparedBy": {"type":"string"}, "date": {"type":"string"}, "rateCardVersion": {"type":"string","minLength":1} }, "additionalProperties": false },
+    "period": { "enum": ["week", "month", "year"] },
+    "vol": { "$ref": "#/$defs/numericMap" },
+    "opts": { "type": "object" },
+    "rates": { "$ref": "#/$defs/numericMap" },
+    "prod": { "$ref": "#/$defs/numericMap" },
+    "scenarios": { "type": "array", "minItems": 3, "items": { "type": "object", "required": ["name", "volPct"], "properties": { "name": {"type":"string"}, "volPct": {"type":"number","minimum":0} }, "additionalProperties": false } },
+    "terms": { "$ref": "#/$defs/numericMap" },
+    "ramp": { "type": "object", "required": ["startDate", "months", "startPct", "profile"], "properties": { "startDate": {"type":"string"}, "months": {"type":"number","minimum":1}, "startPct": {"type":"number","minimum":0}, "profile": { "type": ["array", "null"], "items": {"type":"number"} } }, "additionalProperties": false }
+  },
+  "$defs": { "numericMap": { "type": "object", "minProperties": 1, "additionalProperties": { "type": "number" } } }
+}

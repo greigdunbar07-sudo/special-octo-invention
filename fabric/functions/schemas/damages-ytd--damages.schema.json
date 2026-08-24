@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://covetrus.internal/schemas/damages-v1.json",
+  "title": "Damages dashboard data v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["d", "s", "c"],
+  "properties": {
+    "d": { "type": "array", "items": { "$ref": "#/$defs/damage" } },
+    "s": { "type": "object", "additionalProperties": { "type": "object", "additionalProperties": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } } } },
+    "c": { "type": "object", "additionalProperties": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "number" } } }
+  },
+  "$defs": {
+    "damage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sup", "pc", "de", "dt", "u", "lv", "av", "em", "ca"],
+      "properties": {
+        "sup": {"type":"string"}, "pc": {"type":"string"}, "de": {"type":"string"},
+        "dt": {"type":"string","pattern":"^2026-(0[1-7])-([0-2][0-9]|3[01])$"},
+        "u": {"type":"number"}, "lv": {"type":"number"}, "av": {"type":"number"},
+        "em": {"type":"string"}, "ca": {"type":"string"}
+      }
+    }
+  }
+}

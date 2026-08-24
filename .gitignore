@@ -1,0 +1,49 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+.tools/
+.npm-cache
+
+# Build output
+dist
+dist-ssr
+dist-server
+public/artifacts
+private-seed
+tmp
+*.tsbuildinfo
+.vite
+
+# Test coverage
+coverage
+sbom*.json
+*.sarif
+
+# Local env files (`*.local` matches `.env.local`, `.env.*.local`, etc.)
+.env
+.env.*
+!.env.example
+*.local
+
+# Ad-hoc report export; publish reports through the portal rather than Git.
+Price Audit — Point-in-Time Lookup.html
+deliverables/
+__pycache__/
+*.py[cod]
+
+# Editor / OS
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

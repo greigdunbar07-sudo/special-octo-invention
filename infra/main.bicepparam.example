@@ -1,0 +1,12 @@
+using './main.bicep'
+
+param namePrefix = 'covetrus-insight-hub'
+param location = 'uksouth'
+param sqlLocation = 'uksouth'
+param tenantId = '00000000-0000-0000-0000-000000000000'
+param sqlAdministratorObjectId = '00000000-0000-0000-0000-000000000000'
+param sqlAdministratorLogin = 'your.name@example.com'
+param securityContactEmail = 'security.operations@example.com'
+param usageTelemetryMode = 'off'
+param enableUsageInsights = false
+param usageEventRetentionDays = 180
