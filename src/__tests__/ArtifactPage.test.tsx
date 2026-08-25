@@ -22,8 +22,15 @@ const priceAudit: ArtifactSummary = {
   entryUrl: '/artifacts/price-audit/index.html', hostedHtml: '<html><body>price</body></html>',
 };
 
+const betterBuying: ArtifactSummary = {
+  id: 'a3', slug: 'better-buying', title: 'Better Buying', description: 'Supplier buying workspace',
+  kind: 'tool', version: '1.0.0', owner: 'Commercial', dataDate: null,
+  entryUrl: 'https://covetrus-better-buying.azurewebsites.net/', capabilities: [], datasetKeys: [],
+  accent: 'blue', source: 'linked',
+};
+
 vi.mock('@/hooks/PortalContext', () => ({
-  usePortal: () => ({ catalog: [artifact, priceAudit], loading: false }),
+  usePortal: () => ({ catalog: [artifact, priceAudit, betterBuying], loading: false }),
 }));
 vi.mock('@/services/portalApi', () => ({
   portalApi: { getArtifactData: vi.fn() },
@@ -74,5 +81,24 @@ describe('ArtifactPage self-contained viewer', () => {
     render(<MemoryRouter initialEntries={['/artifacts/price-audit']}><Routes><Route path="/artifacts/:artifactId" element={<ArtifactPage />} /></Routes></MemoryRouter>);
     expect(await screen.findByText('Loading protected data…')).toBeInTheDocument();
     expect(portalApi.getArtifactData).toHaveBeenCalledWith('a2', 'data');
+  });
+
+  it('opens a linked app in a new tab without mounting an artifact iframe', async () => {
+    const user = userEvent.setup();
+    const opened = { opener: window as Window | null };
+    const open = vi.spyOn(window, 'open').mockReturnValue(opened as unknown as Window);
+    render(<MemoryRouter initialEntries={['/artifacts/better-buying']}><Routes><Route path="/artifacts/:artifactId" element={<ArtifactPage />} /></Routes></MemoryRouter>);
+
+    expect(await screen.findByRole('heading', { name: 'Better Buying' })).toBeInTheDocument();
+    expect(screen.queryByTitle('Better Buying')).not.toBeInTheDocument();
+    expect(document.querySelector('iframe')).not.toBeInTheDocument();
+    expect(mocks.track).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'artifact_opened', artifactId: 'a3' }));
+
+    await user.click(screen.getByRole('button', { name: 'Open Better Buying' }));
+
+    expect(open).toHaveBeenCalledWith('https://covetrus-better-buying.azurewebsites.net/', '_blank', 'noopener,noreferrer');
+    expect(opened.opener).toBeNull();
+    expect(mocks.track).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'artifact_ready', artifactId: 'a3', interactionId: expect.any(String) }));
+    open.mockRestore();
   });
 });

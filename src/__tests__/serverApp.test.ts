@@ -67,6 +67,13 @@ describe('Azure container HTTP surface', () => {
     await request(app).post('/api/admin/artifacts').expect(401);
   });
 
+  it('requires Microsoft sign-in before an app can be linked', async () => {
+    await request(app).post('/api/admin/artifacts/links').send({
+      title: 'Better Buying', description: 'Supplier buying workspace', kind: 'tool', owner: 'Commercial',
+      url: 'https://covetrus-better-buying.azurewebsites.net/',
+    }).expect(401);
+  });
+
   it('requires Microsoft sign-in before users or published artifacts can be deleted', async () => {
     await request(app).delete('/api/admin/users/user-1').expect(401);
     await request(app).delete('/api/admin/artifacts/artifact-1').expect(401);

@@ -1,6 +1,8 @@
 import sql from 'mssql';
 
-import { parseArtifactIcon, PORTAL_NOTIFICATION_TYPES, type AccessRequestRecord, type AccessRequestState, type AdminSnapshot, type ArtifactSummary, type DatasetRecord, type NotificationFeed, type PortalGroup, type PortalIdentity, type PortalNotification, type PortalNotificationType, type PortalRole, type QlikCleanRecipe, type QlikDatasetBinding, type UsageInsights, type UsageInsightsRange, type UserStatus } from '../src/types/portal.js';
+import { parseLinkedAppUrl } from '../src/lib/linked-url.js';
+import { parseArtifactIcon, parseArtifactSource, PORTAL_NOTIFICATION_TYPES, type AccessRequestRecord, type AccessRequestState, type AdminSnapshot, type ArtifactSummary, type DatasetRecord, type NotificationFeed, type PortalGroup, type PortalIdentity, type PortalNotification, type PortalNotificationType, type PortalRole, type QlikCleanRecipe, type QlikDatasetBinding, type UsageInsights, type UsageInsightsRange, type UserStatus } from '../src/types/portal.js';
+import { bumpVersion } from '../scripts/artifact-package.mjs';
 import { usageTelemetryEnabled, type AppConfig } from './config.js';
 import type { VerifiedPrincipal } from './auth.js';
 import { artifactEntryUrl, type ArtifactRegistry } from './artifacts.js';
@@ -37,7 +39,7 @@ function artifact(row: Row): ArtifactSummary {
     datasetKeys: JSON.parse(String(row.datasetKeysJson)) as string[],
     accent: row.kind === 'report' ? 'teal' : 'blue',
     icon: artifactIcon(row.icon),
-    source: String(row.source ?? 'bundled') === 'uploaded' ? 'uploaded' : 'bundled',
+    source: parseArtifactSource(row.source),
     isActive: row.isActive === undefined ? true : Boolean(row.isActive),
     isFavorite: Boolean(row.isFavorite),
     lastOpenedAt: row.lastOpenedAt instanceof Date ? row.lastOpenedAt.toISOString() : row.lastOpenedAt ? String(row.lastOpenedAt) : null,
@@ -831,7 +833,9 @@ export class PortalRepository {
     const pool = await this.pool();
     const existing = await one(pool, 'SELECT TOP 1 * FROM Artifact WHERE slug=@slug', { slug: input.slug });
     if (existing && String(existing.source ?? 'bundled') !== 'uploaded') {
-      throw new AppError(409, 'SLUG_RESERVED', 'That slug already ships in the container. Choose a different title.');
+      throw new AppError(409, 'SLUG_RESERVED', parseArtifactSource(existing.source) === 'linked'
+        ? 'That title is already used by a linked app. Choose a different title.'
+        : 'That slug already ships in the container. Choose a different title.');
     }
     const now = new Date();
     const id = existing ? String(existing.id) : crypto.randomUUID();
@@ -861,10 +865,47 @@ export class PortalRepository {
     return artifact((await one(pool, 'SELECT * FROM Artifact WHERE id=@id', { id }))!);
   }
 
-  async updateUploadedArtifact(admin: PortalIdentity, id: string, patch: { isActive?: boolean; title?: string; description?: string; owner?: string; dataDate?: string | null; icon?: ArtifactSummary['icon']; capabilities?: string[] }): Promise<void> {
+  async upsertLinkedArtifact(admin: PortalIdentity, input: {
+    slug: string; title: string; description: string; kind: 'report' | 'tool'; version: string; owner: string;
+    entryUrl: string; icon?: ArtifactSummary['icon'];
+  }): Promise<ArtifactSummary> {
     this.requireAdmin(admin);
     const pool = await this.pool();
-    const target = await one(pool, "SELECT TOP 1 * FROM Artifact WHERE id=@id AND source='uploaded'", { id });
+    const existing = await one(pool, 'SELECT TOP 1 * FROM Artifact WHERE slug=@slug', { slug: input.slug });
+    if (existing && String(existing.source ?? 'bundled') !== 'linked') {
+      throw new AppError(409, 'SLUG_RESERVED', String(existing.source ?? 'bundled') === 'uploaded'
+        ? 'That title is already used by a published report or tool. Choose a different title.'
+        : 'That slug already ships in the container. Choose a different title.');
+    }
+    const now = new Date();
+    const id = existing ? String(existing.id) : crypto.randomUUID();
+    await request(pool, {
+      id, slug: input.slug, title: input.title, description: input.description, kind: input.kind, version: input.version,
+      owner: input.owner, entryUrl: input.entryUrl, icon: input.icon ?? null, now,
+    }).query(`MERGE Artifact AS target USING (SELECT @id AS id) AS incoming ON target.id=incoming.id
+      WHEN MATCHED AND target.[source]='linked' THEN UPDATE SET title=@title,description=@description,kind=@kind,version=@version,owner=@owner,entryUrl=@entryUrl,icon=@icon,isActive=1,updatedAt=@now
+      WHEN NOT MATCHED THEN INSERT (id,slug,title,description,kind,version,owner,dataDate,entryUrl,capabilitiesJson,datasetKeysJson,isActive,createdAt,updatedAt,[source],bundleLocation,icon)
+      VALUES (@id,@slug,@title,@description,@kind,@version,@owner,NULL,@entryUrl,'[]','[]',1,@now,@now,'linked',NULL,@icon);`);
+    await request(pool, { grantId: crypto.randomUUID(), artifactId: id, userId: admin.id, now })
+      .query(`IF NOT EXISTS (SELECT 1 FROM ArtifactGrant WHERE artifactId=@artifactId AND targetType='user' AND targetId=@userId)
+        INSERT INTO ArtifactGrant (id,artifactId,targetType,targetId,createdAt,createdByUserId) VALUES (@grantId,@artifactId,'user',@userId,@now,@userId)`);
+    await request(pool, { tenantId: admin.tenantId, artifactId: id, actorId: admin.id, now })
+      .query(`INSERT INTO PortalNotification (id,tenantId,userId,artifactId,datasetId,[type],createdAt,readAt)
+        SELECT NEWID(),@tenantId,u.id,@artifactId,NULL,'artifact_published',@now,NULL
+        FROM PortalUser u
+        WHERE u.tenantId=@tenantId AND u.status='active' AND u.id<>@actorId AND EXISTS (
+          SELECT 1 FROM ArtifactGrant g WHERE g.artifactId=@artifactId AND
+          ((g.targetType='user' AND g.targetId=u.id) OR
+          (g.targetType='group' AND EXISTS (SELECT 1 FROM GroupMember gm WHERE gm.groupId=g.targetId AND gm.userId=u.id))))
+          AND NOT EXISTS (SELECT 1 FROM PortalNotification x WHERE x.userId=u.id AND x.artifactId=@artifactId AND x.[type]='artifact_published' AND x.readAt IS NULL)`);
+    await this.audit(pool, admin, existing ? 'artifact.replaced' : 'artifact.published', 'artifact', input.slug, input.version);
+    return artifact((await one(pool, 'SELECT * FROM Artifact WHERE id=@id', { id }))!);
+  }
+
+  async updateUploadedArtifact(admin: PortalIdentity, id: string, patch: { isActive?: boolean; title?: string; description?: string; owner?: string; dataDate?: string | null; icon?: ArtifactSummary['icon']; capabilities?: string[]; url?: string }): Promise<void> {
+    this.requireAdmin(admin);
+    const pool = await this.pool();
+    const target = await one(pool, "SELECT TOP 1 * FROM Artifact WHERE id=@id AND source IN ('uploaded','linked')", { id });
     if (!target) throw new AppError(404, 'ARTIFACT_NOT_FOUND', 'The published artifact was not found.');
     const isActive = patch.isActive ?? Boolean(target.isActive);
     const title = patch.title ?? String(target.title);
@@ -872,9 +913,24 @@ export class PortalRepository {
     const owner = patch.owner ?? String(target.owner);
     const dataDate = patch.dataDate === undefined ? target.dataDate : patch.dataDate;
     const icon = artifactIcon(patch.icon) ?? artifactIcon(target.icon) ?? null;
-    const capabilitiesJson = patch.capabilities === undefined ? String(target.capabilitiesJson) : JSON.stringify(patch.capabilities.filter((item) => item === 'downloads'));
-    await request(pool, { id, isActive: isActive ? 1 : 0, title, description, owner, dataDate, icon, capabilitiesJson, updatedAt: new Date() })
-      .query('UPDATE Artifact SET isActive=@isActive,title=@title,description=@description,owner=@owner,dataDate=@dataDate,icon=@icon,capabilitiesJson=@capabilitiesJson,updatedAt=@updatedAt WHERE id=@id');
+    const source = parseArtifactSource(target.source);
+    const capabilitiesJson = source === 'linked' || patch.capabilities === undefined
+      ? String(target.capabilitiesJson)
+      : JSON.stringify(patch.capabilities.filter((item) => item === 'downloads'));
+    let entryUrl = String(target.entryUrl);
+    let version = String(target.version);
+    if (patch.url !== undefined) {
+      if (source !== 'linked') throw new AppError(400, 'INVALID_ARTIFACT', 'Only linked apps have an external URL.');
+      let nextUrl: string;
+      try { nextUrl = parseLinkedAppUrl(patch.url); }
+      catch (caught) { throw new AppError(400, 'INVALID_LINK_URL', caught instanceof Error ? caught.message : 'Enter a valid HTTPS URL.'); }
+      if (nextUrl !== entryUrl) {
+        entryUrl = nextUrl;
+        version = bumpVersion(version);
+      }
+    }
+    await request(pool, { id, isActive: isActive ? 1 : 0, title, description, owner, dataDate, icon, capabilitiesJson, entryUrl, version, updatedAt: new Date() })
+      .query('UPDATE Artifact SET isActive=@isActive,title=@title,description=@description,owner=@owner,dataDate=@dataDate,icon=@icon,capabilitiesJson=@capabilitiesJson,entryUrl=@entryUrl,version=@version,updatedAt=@updatedAt WHERE id=@id');
     await this.audit(pool, admin, isActive ? 'artifact.updated' : 'artifact.unpublished', 'artifact', String(target.slug), title);
   }
 
@@ -884,7 +940,7 @@ export class PortalRepository {
     const transaction = new sql.Transaction(pool);
     await transaction.begin(sql.ISOLATION_LEVEL.SERIALIZABLE);
     try {
-      const target = await one(transaction, "SELECT TOP 1 * FROM Artifact WITH (UPDLOCK,HOLDLOCK) WHERE id=@id AND source='uploaded'", { id });
+      const target = await one(transaction, "SELECT TOP 1 * FROM Artifact WITH (UPDLOCK,HOLDLOCK) WHERE id=@id AND source IN ('uploaded','linked')", { id });
       if (!target) throw new AppError(404, 'ARTIFACT_NOT_FOUND', 'The published artifact was not found.');
       const slug = String(target.slug);
       const datasets = await many(transaction, 'SELECT storageLocation FROM Dataset WHERE artifactId=@id', { id });

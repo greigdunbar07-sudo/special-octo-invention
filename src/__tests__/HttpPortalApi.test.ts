@@ -68,6 +68,29 @@ describe('HttpPortalApi request bodies', () => {
     expect(init?.cache).toBe('no-store');
   });
 
+  it('posts linked apps as JSON rather than a multipart package', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 201,
+      json: async () => ({ ...artifact, source: 'linked', entryUrl: 'https://covetrus-better-buying.azurewebsites.net/' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const api = new HttpPortalApi();
+
+    await api.linkArtifact({
+      title: 'Better Buying', description: 'Supplier buying workspace', kind: 'tool', owner: 'Commercial',
+      url: 'https://covetrus-better-buying.azurewebsites.net/',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/artifacts/links', expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: 'Better Buying', description: 'Supplier buying workspace', kind: 'tool', owner: 'Commercial',
+        url: 'https://covetrus-better-buying.azurewebsites.net/',
+      }),
+    }));
+  });
+
   it('stores a favourite against the signed-in user', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 204, json: async () => undefined }));
     vi.stubGlobal('fetch', fetchMock);

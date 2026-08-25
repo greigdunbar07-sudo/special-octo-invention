@@ -234,6 +234,9 @@ export function createApp(config: AppConfig, options: { enableQlikScheduler?: bo
     response.setHeader('Cache-Control', 'private, no-store');
     response.send(await publisher.preview(response.locals.user, param(request.params.token)));
   }));
+  app.post('/api/admin/artifacts/links', principal, portalUser, admin, asyncRoute(async (request, response) => {
+    response.status(201).json(await publisher.link(response.locals.user, request.body ?? {}));
+  }));
   app.post('/api/admin/artifacts', principal, portalUser, admin, uploadRateLimit, uploadConcurrencyLimit, uploadSizeLimit, upload.fields([{ name: 'file', maxCount: 1 }, { name: 'json', maxCount: 10 }]), asyncRoute(async (request, response) => {
     response.status(201).json(await publisher.publish(response.locals.user, fieldsFrom(request.body), filesFrom(request)));
   }));

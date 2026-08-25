@@ -81,4 +81,16 @@ describe('HomePage routes', () => {
     expect(mocks.track).toHaveBeenCalledWith({ eventType: 'catalog_searched', resultCount: 1, kindFilter: 'all', filterCount: 0 });
     expect(JSON.stringify(mocks.track.mock.calls)).not.toContain('Operations');
   });
+
+  it('marks linked apps as external on library cards', () => {
+    mocks.catalog = [{
+      id: 'a3', slug: 'better-buying', title: 'Better Buying', description: 'Supplier buying workspace',
+      kind: 'tool', version: '1.0.0', owner: 'Commercial', dataDate: null,
+      entryUrl: 'https://covetrus-better-buying.azurewebsites.net/', capabilities: [], datasetKeys: [],
+      accent: 'blue', source: 'linked',
+    }];
+    render(<MemoryRouter><HomePage kind="tool" /></MemoryRouter>);
+    expect(screen.getByText('External')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Better Buying/ })).toHaveAttribute('href', '/artifacts/better-buying');
+  });
 });

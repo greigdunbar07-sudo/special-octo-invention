@@ -3,12 +3,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { Link, useLocation, useParams } from 'react-router-dom';
 
 import { PageState } from './HomePage';
+import { ArtifactIcon } from '@/components/ArtifactIcon';
 import { usePortal } from '@/hooks/PortalContext';
+import { linkedAppHost } from '@/lib/linked-url';
 import { portalApi } from '@/services/portalApi';
 import { BRIDGE_PROTOCOL, isArtifactBridgeMessage, saveArtifactDownload } from '@/services/artifactBridge';
 import { openArtifactInNewTab } from '@/services/artifactNewTab';
 import { usageTelemetry } from '@/services/usageTelemetry';
-import type { ArtifactFailureCode, DatasetEnvelope } from '@/types/portal';
+import type { ArtifactFailureCode, ArtifactSummary, DatasetEnvelope } from '@/types/portal';
 
 type BridgeDataset = { datasetKey: string; schemaVersion: number; payload: unknown; payloadJson: string };
 
@@ -27,6 +29,61 @@ export function ArtifactPage() {
   const standalone = new URLSearchParams(search).get('view') === 'tab';
   const { catalog, loading: portalLoading, markArtifactUsed } = usePortal();
   const artifact = catalog.find((item) => item.slug === artifactId);
+  if (portalLoading) return <PageState title="Opening artifact" body="Checking access…" />;
+  if (!artifact) return <PageState title="Access denied" body="This artifact does not exist or is not assigned to you." action={<Link className="button primary" to="/">Return to library</Link>} />;
+  if (artifact.source === 'linked') return <LinkedArtifactLauncher artifact={artifact} standalone={standalone} markArtifactUsed={markArtifactUsed} />;
+  return <HostedArtifactViewer artifact={artifact} standalone={standalone} markArtifactUsed={markArtifactUsed} />;
+}
+
+function LinkedArtifactLauncher({ artifact, standalone, markArtifactUsed }: { artifact: ArtifactSummary; standalone: boolean; markArtifactUsed?: (artifactId: string) => void }) {
+  const [openError, setOpenError] = useState('');
+  const attempt = useRef<{ interactionId: string; startedAt: number } | null>(null);
+  const categoryPath = artifact.kind === 'report' ? '/reports' : '/tools';
+  const categoryLabel = artifact.kind === 'report' ? 'Reports' : 'Tools';
+
+  useLayoutEffect(() => {
+    const interactionId = crypto.randomUUID();
+    attempt.current = { interactionId, startedAt: performance.now() };
+    usageTelemetry.track({ eventType: 'artifact_opened', artifactId: artifact.id, interactionId });
+  }, [artifact.id]);
+
+  function openDestination() {
+    const opened = window.open(artifact.entryUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) {
+      setOpenError('The new tab was blocked by your browser.');
+      return;
+    }
+    opened.opener = null;
+    setOpenError('');
+    const current = attempt.current;
+    if (!current) return;
+    const durationMs = Math.max(0, Math.round(performance.now() - current.startedAt));
+    markArtifactUsed?.(artifact.id);
+    usageTelemetry.track({ eventType: 'artifact_ready', artifactId: artifact.id, interactionId: current.interactionId, durationMs });
+  }
+
+  return <div className={`viewer-page${standalone ? ' viewer-standalone' : ''}`}>
+    {!standalone && <div className="viewer-toolbar">
+      <div className="viewer-breadcrumb"><Link to={categoryPath}><ArrowLeft size={17} /> {categoryLabel}</Link><span>/</span><div><strong>{artifact.title}</strong><small>{artifact.kind} · linked app</small></div></div>
+      <div className="viewer-actions"><button type="button" aria-label={`Open ${artifact.title} in a new tab`} title={`Open ${artifact.title} in a new tab`} onClick={openDestination}><ExternalLink size={17} /></button></div>
+    </div>}
+    {openError && <div className="viewer-inline-error" role="alert">{openError}</div>}
+    <div className="viewer-frame-wrap">
+      <div className="linked-launcher">
+        <div className="linked-launcher-card">
+          <span className={`artifact-icon accent-${artifact.accent}`}><ArtifactIcon name={artifact.icon} kind={artifact.kind} /></span>
+          <span className="artifact-kind">External</span>
+          <h2>{artifact.title}</h2>
+          <p>{artifact.description}</p>
+          <p className="linked-launcher-host">Opens {linkedAppHost(artifact.entryUrl)} in a new tab. That app keeps its own sign-in.</p>
+          <button className="button primary" type="button" onClick={openDestination}>Open {artifact.title}</button>
+        </div>
+      </div>
+    </div>
+  </div>;
+}
+
+function HostedArtifactViewer({ artifact, standalone, markArtifactUsed }: { artifact: ArtifactSummary; standalone: boolean; markArtifactUsed?: (artifactId: string) => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const channel = useRef<MessageChannel | null>(null);
   const datasetsRef = useRef<Promise<BridgeDataset[]> | null>(null);
@@ -40,7 +97,6 @@ export function ArtifactPage() {
   const attempt = useRef<{ key: string; interactionId: string; startedAt: number; terminal: boolean } | null>(null);
 
   useLayoutEffect(() => {
-    if (!artifact) return;
     const key = `${artifact.id}:${frameKey}`;
     if (attempt.current?.key === key) return;
     setError(''); setStatus('loading');
@@ -50,15 +106,14 @@ export function ArtifactPage() {
 
   const finishAttempt = useCallback((result: 'ready' | 'failed', errorCode?: ArtifactFailureCode) => {
     const current = attempt.current;
-    if (!artifact || !current || current.terminal) return;
+    if (!current || current.terminal) return;
     current.terminal = true;
     const durationMs = Math.max(0, Math.round(performance.now() - current.startedAt));
     if (result === 'ready') { markArtifactUsed?.(artifact.id); usageTelemetry.track({ eventType: 'artifact_ready', artifactId: artifact.id, interactionId: current.interactionId, durationMs }); }
     else usageTelemetry.track({ eventType: 'artifact_failed', artifactId: artifact.id, interactionId: current.interactionId, durationMs, errorCode: errorCode! });
-  }, [artifact, markArtifactUsed]);
+  }, [artifact.id, markArtifactUsed]);
 
   useEffect(() => {
-    if (!artifact) return;
     if (artifact.datasetKeys.length === 0) {
       datasetsRef.current = Promise.resolve([]);
       return;
@@ -67,7 +122,7 @@ export function ArtifactPage() {
   }, [artifact, frameKey]);
 
   const connect = useCallback(() => {
-    if (!artifact || !frame.current?.contentWindow) return;
+    if (!frame.current?.contentWindow) return;
     if (artifact.datasetKeys.length === 0) { setStatus('ready'); finishAttempt('ready'); }
     channel.current?.port1.close();
     const next = new MessageChannel(); channel.current = next;
@@ -99,7 +154,7 @@ export function ArtifactPage() {
   }, [artifact, finishAttempt]);
 
   useEffect(() => {
-    if (!artifact || status !== 'loading') return;
+    if (status !== 'loading') return;
     const timer = window.setTimeout(() => {
       setError('The artifact did not finish loading.'); setStatus('error'); finishAttempt('failed', 'INITIALIZATION_TIMEOUT');
     }, 30_000);
@@ -117,8 +172,6 @@ export function ArtifactPage() {
     document.body.style.overflow = 'hidden'; document.addEventListener('keydown', exit);
     return () => { document.body.style.overflow = previousOverflow; document.removeEventListener('keydown', exit); };
   }, [focusMode]);
-  if (portalLoading) return <PageState title="Opening artifact" body="Checking access…" />;
-  if (!artifact) return <PageState title="Access denied" body="This artifact does not exist or is not assigned to you." action={<Link className="button primary" to="/">Return to library</Link>} />;
   const categoryPath = artifact.kind === 'report' ? '/reports' : '/tools';
   const categoryLabel = artifact.kind === 'report' ? 'Reports' : 'Tools';
   return <div className={`viewer-page${focusMode ? ' viewer-focus-mode' : ''}${standalone ? ' viewer-standalone' : ''}`}>

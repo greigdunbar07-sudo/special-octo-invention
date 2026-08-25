@@ -37,6 +37,11 @@ describe('ArtifactPublishService preflight staging', () => {
         owner: input.owner, dataDate: input.dataDate, entryUrl: input.entryUrl, capabilities: input.capabilities, datasetKeys: input.datasetKeys,
         accent: 'teal', source: 'uploaded',
       })),
+      upsertLinkedArtifact: vi.fn(async (_actor, input) => ({
+        id: 'linked-1', slug: input.slug, title: input.title, description: input.description, kind: input.kind, version: input.version,
+        owner: input.owner, dataDate: null, entryUrl: input.entryUrl, capabilities: [], datasetKeys: [],
+        accent: 'blue', source: 'linked',
+      })),
       deleteUploadedArtifact: vi.fn(async () => ({ slug: 'live-report', storageLocations: ['live-report/data/checksum.json'] })),
     } as unknown as PortalRepository;
     const datasets = { upload: vi.fn(async () => undefined) } as unknown as DatasetService;
@@ -100,5 +105,24 @@ describe('ArtifactPublishService preflight staging', () => {
     expect(repository.deleteUploadedArtifact).toHaveBeenCalledWith(admin, 'uploaded-1');
     expect(existsSync(join(bundleRoot, 'bundles', 'live-report'))).toBe(false);
     expect(existsSync(join(bundleRoot, 'live-report', 'data', 'checksum.json'))).toBe(false);
+  });
+
+  it('links an HTTPS app without storing a bundle', async () => {
+    const { repository, service } = createService();
+    const linked = await service.link(admin, {
+      title: 'Better Buying', description: 'Supplier buying workspace', kind: 'tool', owner: 'Commercial',
+      url: 'https://covetrus-better-buying.azurewebsites.net/', icon: 'package',
+    });
+    expect(linked).toMatchObject({ slug: 'better-buying', source: 'linked', entryUrl: 'https://covetrus-better-buying.azurewebsites.net/' });
+    expect(repository.upsertLinkedArtifact).toHaveBeenCalledWith(admin, expect.objectContaining({
+      slug: 'better-buying', entryUrl: 'https://covetrus-better-buying.azurewebsites.net/', kind: 'tool',
+    }));
+  });
+
+  it('rejects non-HTTPS destinations for linked apps', async () => {
+    const { service } = createService();
+    await expect(service.link(admin, {
+      title: 'Unsafe', description: 'Nope', kind: 'tool', owner: 'Commercial', url: 'http://example.com',
+    })).rejects.toMatchObject({ code: 'INVALID_LINK_URL' });
   });
 });

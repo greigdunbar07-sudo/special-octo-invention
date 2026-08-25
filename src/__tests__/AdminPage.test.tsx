@@ -70,6 +70,16 @@ const mocks = vi.hoisted(() => {
         snapshot = { ...snapshot, artifacts: [...snapshot.artifacts, published] };
         return published;
       }),
+      linkArtifact: vi.fn(async (input: { title: string; description: string; kind: 'report' | 'tool'; owner: string; url: string }) => {
+        const linked = {
+          id: 'artifact-linked', slug: 'better-buying', title: input.title, description: input.description,
+          kind: input.kind, version: '1.0.0', owner: input.owner, dataDate: null,
+          entryUrl: input.url, capabilities: [], datasetKeys: [] as string[],
+          accent: 'blue' as const, source: 'linked' as const,
+        };
+        snapshot = { ...snapshot, artifacts: [...snapshot.artifacts, linked] };
+        return linked;
+      }),
       updatePublishedArtifact: vi.fn(async () => undefined),
       deletePublishedArtifact: vi.fn(async (id: string) => {
         snapshot = { ...snapshot, artifacts: snapshot.artifacts.filter((item) => item.id !== id) };
@@ -259,6 +269,26 @@ describe('AdminPage access changes', () => {
     expect(screen.getByRole('button', { name: 'Publish now' })).toBeInTheDocument();
     expect(screen.getByText(/Instructions to paste into Cowork/)).toBeInTheDocument();
     expect(screen.getByText('Ships in the container')).toBeInTheDocument();
+  });
+
+  it('links an HTTPS app from the library tab without an HTML package', async () => {
+    const user = userEvent.setup();
+    renderAdmin();
+    await user.click(screen.getByRole('tab', { name: /Library/ }));
+    await user.click(screen.getByRole('button', { name: 'Link an app' }));
+    await user.type(screen.getByLabelText('Title'), 'Better Buying');
+    await user.type(screen.getByLabelText('Description'), 'Supplier buying workspace');
+    await user.type(screen.getByLabelText('Owner'), 'Commercial');
+    await user.type(screen.getByLabelText('App URL'), 'https://covetrus-better-buying.azurewebsites.net/');
+    fireEvent.submit(screen.getByRole('button', { name: 'Link now' }).closest('form')!);
+    await waitFor(() => expect(mocks.portalApi.linkArtifact).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Better Buying',
+      kind: 'tool',
+      url: 'https://covetrus-better-buying.azurewebsites.net/',
+    })));
+    expect(await screen.findByText('Better Buying')).toBeInTheDocument();
+    expect(screen.getByText('Linked app')).toBeInTheDocument();
+    expect(screen.queryByLabelText('HTML or zip')).not.toBeInTheDocument();
   });
 
   it('permanently deletes a live-published report after confirmation', async () => {

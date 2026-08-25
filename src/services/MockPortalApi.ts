@@ -23,6 +23,7 @@ import type {
   UserStatus,
 } from '@/types/portal';
 import { downloadInviteFile } from '@/lib/invite-download';
+import { parseLinkedAppUrl } from '@/lib/linked-url';
 import { prepareInviteFile } from '@/lib/invite-email';
 import { applyQlikClean } from '@/lib/qlik-transform';
 import type { QlikTablePayload } from '@/lib/qlik-payload';
@@ -436,6 +437,29 @@ export class MockPortalApi implements PortalApi {
     log(existing ? 'artifact.replaced' : 'artifact.published', 'artifact', slug, version);
     return structuredClone(item);
   }
+  async linkArtifact(input: Parameters<PortalApi['linkArtifact']>[0]) {
+    const entryUrl = parseLinkedAppUrl(input.url);
+    const slug = (input.slug || input.title).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+    if (!slug) throw new Error('Enter a title that can be turned into a URL slug.');
+    const existing = artifacts.find((item) => item.slug === slug);
+    if (existing && existing.source !== 'linked') throw new Error('That title is already used. Choose a different title.');
+    const id = existing?.id ?? crypto.randomUUID();
+    const version = existing ? existing.version.replace(/(\d+)$/, (value) => String(Number(value) + 1)) : '1.0.0';
+    const timestamp = new Date().toISOString();
+    const item: ArtifactSummary = {
+      id, slug, title: input.title, description: input.description, kind: input.kind, version,
+      owner: input.owner, dataDate: null, entryUrl,
+      publishedAt: existing?.publishedAt ?? timestamp, updatedAt: timestamp,
+      capabilities: [], datasetKeys: [], accent: input.kind === 'report' ? 'teal' : 'blue', icon: input.icon,
+      source: 'linked',
+    };
+    artifacts = existing ? artifacts.map((candidate) => candidate.id === id ? item : candidate) : [...artifacts, item];
+    if (!grants.some((grant) => grant.artifactId === id && grant.targetType === 'user' && grant.targetId === users[0].id)) {
+      grants = [...grants, { id: crypto.randomUUID(), artifactId: id, targetType: 'user', targetId: users[0].id }];
+    }
+    log(existing ? 'artifact.replaced' : 'artifact.published', 'artifact', slug, version);
+    return structuredClone(item);
+  }
   async replaceArtifactBundle(id: string, input: { html?: File; zip?: File; jsonFiles?: File[] }) {
     const current = artifacts.find((item) => item.id === id && item.source === 'uploaded');
     if (!current) throw new Error('The published artifact was not found.');
@@ -446,7 +470,7 @@ export class MockPortalApi implements PortalApi {
     });
   }
   async updatePublishedArtifact(id: string, patch: Parameters<PortalApi['updatePublishedArtifact']>[1]) {
-    const current = artifacts.find((item) => item.id === id && item.source === 'uploaded');
+    const current = artifacts.find((item) => item.id === id && (item.source === 'uploaded' || item.source === 'linked'));
     if (!current) throw new Error('The published artifact was not found.');
     if (patch.isActive === false) {
       artifacts = artifacts.filter((item) => item.id !== id);
@@ -454,11 +478,14 @@ export class MockPortalApi implements PortalApi {
       log('artifact.unpublished', 'artifact', current.slug, current.title);
       return;
     }
-    artifacts = artifacts.map((item) => item.id === id ? { ...item, ...patch, updatedAt: new Date().toISOString() } : item);
+    if (patch.url !== undefined && current.source !== 'linked') throw new Error('Only linked apps have an external URL.');
+    const { url, ...rest } = patch;
+    const nextUrl = url !== undefined ? parseLinkedAppUrl(url) : current.entryUrl;
+    artifacts = artifacts.map((item) => item.id === id ? { ...item, ...rest, entryUrl: nextUrl, updatedAt: new Date().toISOString() } : item);
     log('artifact.updated', 'artifact', current.slug, current.title);
   }
   async deletePublishedArtifact(id: string) {
-    const current = artifacts.find((item) => item.id === id && item.source === 'uploaded');
+    const current = artifacts.find((item) => item.id === id && (item.source === 'uploaded' || item.source === 'linked'));
     if (!current) throw new Error('The published artifact was not found.');
     artifacts = artifacts.filter((item) => item.id !== id);
     grants = grants.filter((grant) => grant.artifactId !== id);

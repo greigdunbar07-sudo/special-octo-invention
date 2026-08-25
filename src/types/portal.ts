@@ -1,4 +1,10 @@
 export type ArtifactKind = 'report' | 'tool';
+export type ArtifactSource = 'bundled' | 'uploaded' | 'linked';
+
+export function parseArtifactSource(value: unknown): ArtifactSource {
+  const source = String(value ?? 'bundled');
+  return source === 'uploaded' || source === 'linked' ? source : 'bundled';
+}
 export const ARTIFACT_ICON_VALUES = [
   'chart', 'pie', 'table', 'trend', 'activity', 'gauge',
   'file', 'clipboard', 'presentation',
@@ -47,7 +53,7 @@ export interface ArtifactSummary {
   accent: 'blue' | 'teal';
   icon?: ArtifactIcon;
   isFavorite?: boolean;
-  source?: 'bundled' | 'uploaded';
+  source?: ArtifactSource;
   isActive?: boolean;
   hostedHtml?: string;
   lastOpenedAt?: string | null;
@@ -404,7 +410,16 @@ export interface PortalApi {
     jsonFiles?: File[];
     preflightToken?: string;
   }): Promise<ArtifactSummary>;
+  linkArtifact(input: {
+    title: string;
+    description: string;
+    kind: ArtifactKind;
+    owner: string;
+    url: string;
+    icon?: ArtifactIcon;
+    slug?: string;
+  }): Promise<ArtifactSummary>;
   replaceArtifactBundle(id: string, input: { html?: File; zip?: File; jsonFiles?: File[] }): Promise<ArtifactSummary>;
-  updatePublishedArtifact(id: string, patch: { isActive?: boolean; title?: string; description?: string; owner?: string; dataDate?: string | null; icon?: ArtifactIcon; capabilities?: string[] }): Promise<void>;
+  updatePublishedArtifact(id: string, patch: { isActive?: boolean; title?: string; description?: string; owner?: string; dataDate?: string | null; icon?: ArtifactIcon; capabilities?: string[]; url?: string }): Promise<void>;
   deletePublishedArtifact(id: string): Promise<void>;
 }

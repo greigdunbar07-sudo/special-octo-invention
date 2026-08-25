@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 
+import { parseLinkedAppUrl } from '../src/lib/linked-url.js';
 import { artifactEntryUrl, type ArtifactRegistry } from './artifacts.js';
 import { AppError } from './errors.js';
 import type { DatasetService } from './datasets.js';
@@ -138,6 +139,31 @@ export class ArtifactPublishService {
       throw new AppError(410, 'PREFLIGHT_EXPIRED', 'The compatibility check has expired. Run it again before publishing.');
     }
     return stage;
+  }
+
+  async link(admin: PortalIdentity, fields: { title?: string; description?: string; kind?: string; owner?: string; icon?: string; url?: string; slug?: string }): Promise<ArtifactSummary> {
+    this.repository.requireAdmin(admin);
+    const title = String(fields.title ?? '').trim();
+    const owner = String(fields.owner ?? '').trim();
+    const kind = fields.kind === 'tool' ? 'tool' : fields.kind === 'report' ? 'report' : '';
+    if (!title || !owner || !kind) throw new AppError(400, 'INVALID_ARTIFACT', 'Title, owner, and kind are required.');
+    let entryUrl: string;
+    try { entryUrl = parseLinkedAppUrl(fields.url); }
+    catch (caught) { throw new AppError(400, 'INVALID_LINK_URL', caught instanceof Error ? caught.message : 'Enter a valid HTTPS URL.'); }
+    let slug: string;
+    try { slug = fields.slug?.trim() || slugify(title); }
+    catch (caught) { throw new AppError(400, 'INVALID_ARTIFACT', caught instanceof Error ? caught.message : 'Enter a title that can be turned into a URL slug.'); }
+    if (this.registry.tryBySlug(slug)) throw new AppError(409, 'SLUG_RESERVED', 'That slug already ships in the container. Choose a different title.');
+    const existing = await this.repository.getArtifactBySlug(slug);
+    if (existing && existing.summary.source !== 'linked') {
+      throw new AppError(409, 'SLUG_RESERVED', existing.summary.source === 'uploaded'
+        ? 'That title is already used by a published report or tool. Choose a different title.'
+        : 'That slug already ships in the container. Choose a different title.');
+    }
+    const version = existing?.summary.source === 'linked' ? bumpVersion(existing.summary.version) : '1.0.0';
+    return this.repository.upsertLinkedArtifact(admin, {
+      slug, title, description: String(fields.description ?? '').trim(), kind, version, owner, entryUrl, icon: validIcon(fields.icon),
+    });
   }
 
   async replaceBundle(admin: PortalIdentity, artifactId: string, files: PublishFiles): Promise<ArtifactSummary> {

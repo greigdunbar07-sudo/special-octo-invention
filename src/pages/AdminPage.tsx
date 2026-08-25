@@ -1,4 +1,4 @@
-import { BarChart3, Check, FileStack, KeyRound, Mail, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Upload, UserRoundPlus, UsersRound, X } from 'lucide-react';
+import { BarChart3, Check, FileStack, KeyRound, Link2, Mail, MoreHorizontal, Pencil, Plus, RefreshCw, Search, ShieldCheck, Upload, UserRoundPlus, UsersRound, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 
@@ -8,6 +8,7 @@ import { usePortal } from '@/hooks/PortalContext';
 import { useToast } from '@/hooks/ToastContext';
 import { portalApi } from '@/services/portalApi';
 import { downloadInviteFile } from '@/lib/invite-download';
+import { linkedAppHost } from '@/lib/linked-url';
 import type { AdminSnapshot, ArtifactCompatibilityReport, ArtifactSummary, GrantTargetType, InviteDelivery, QlikDatasetBinding, UsageInsights, UsageInsightsRange } from '@/types/portal';
 import { ArtifactIcon, ArtifactIconPicker, defaultArtifactIcon } from '@/components/ArtifactIcon';
 
@@ -158,7 +159,9 @@ function ArtifactsPanel({ snapshot, reload, refreshPortal, refreshNotifications 
   const [notice, setNotice] = useState<{ kind: 'progress' | 'success' | 'error'; text: string; detail?: string } | null>(null);
   const [uploading, setUploading] = useState('');
   const [publishing, setPublishing] = useState(false);
+  const [linking, setLinking] = useState(false);
   const [showPublish, setShowPublish] = useState(false);
+  const [showLink, setShowLink] = useState(false);
   const [modeHint, setModeHint] = useState('Self-contained HTML, or attach JSON to keep data separate.');
   const [packageFile, setPackageFile] = useState<File | null>(null);
   const [jsonFiles, setJsonFiles] = useState<File[]>([]);
@@ -238,6 +241,26 @@ function ArtifactsPanel({ snapshot, reload, refreshPortal, refreshNotifications 
     finally { setPublishing(false); }
   }
 
+  async function linkApp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setLinking(true); setNotice({ kind: 'progress', text: `Linking ${String(data.get('title'))}…` });
+    try {
+      const artifact = await portalApi.linkArtifact({
+        title: String(data.get('title')), description: String(data.get('description')),
+        kind: String(data.get('kind')) === 'report' ? 'report' : 'tool', owner: String(data.get('owner')),
+        url: String(data.get('url')),
+        icon: String(data.get('icon')) as Parameters<typeof portalApi.linkArtifact>[0]['icon'],
+      });
+      setNotice({ kind: 'success', text: `${artifact.title} is linked for you.`, detail: 'Assign it to a group on the Access matrix tab so others can see it. The destination app keeps its own sign-in.' });
+      setShowLink(false); form.reset();
+      await Promise.all([reload(), refreshPortal(), refreshNotifications()]);
+    }
+    catch (caught) { setNotice({ kind: 'error', text: 'Link failed.', detail: caught instanceof Error ? caught.message : 'The app could not be linked.' }); }
+    finally { setLinking(false); }
+  }
+
   async function replaceBundle(artifactId: string, file?: File) {
     if (!file) return; setUploading(`${artifactId}:bundle`); setNotice({ kind: 'progress', text: `Replacing ${file.name}…` });
     try {
@@ -263,17 +286,30 @@ function ArtifactsPanel({ snapshot, reload, refreshPortal, refreshNotifications 
 
   async function saveMetadata(event: FormEvent<HTMLFormElement>, artifactId: string) {
     event.preventDefault(); const data = new FormData(event.currentTarget);
+    const current = snapshot.artifacts.find((item) => item.id === artifactId);
     setUploading(`${artifactId}:metadata`); setNotice({ kind: 'progress', text: 'Saving library details…' });
     try {
-      await portalApi.updatePublishedArtifact(artifactId, { title: String(data.get('title')), description: String(data.get('description')), owner: String(data.get('owner')), icon: String(data.get('icon')) as Parameters<typeof portalApi.updatePublishedArtifact>[1]['icon'], capabilities: data.get('downloads') ? ['downloads'] : [] });
-      setEditingId(''); setNotice({ kind: 'success', text: 'Library details were updated.', detail: 'The title, icon, description and download setting are live now.' });
+      await portalApi.updatePublishedArtifact(artifactId, current?.source === 'linked'
+        ? { title: String(data.get('title')), description: String(data.get('description')), owner: String(data.get('owner')), icon: String(data.get('icon')) as Parameters<typeof portalApi.updatePublishedArtifact>[1]['icon'], url: String(data.get('url')) }
+        : { title: String(data.get('title')), description: String(data.get('description')), owner: String(data.get('owner')), icon: String(data.get('icon')) as Parameters<typeof portalApi.updatePublishedArtifact>[1]['icon'], capabilities: data.get('downloads') ? ['downloads'] : [] });
+      setEditingId(''); setNotice({ kind: 'success', text: 'Library details were updated.', detail: current?.source === 'linked' ? 'The title, icon, description and URL are live now.' : 'The title, icon, description and download setting are live now.' });
       await Promise.all([reload(), refreshPortal()]);
     } catch (caught) { setNotice({ kind: 'error', text: 'Update failed.', detail: caught instanceof Error ? caught.message : 'The library details could not be saved.' }); }
     finally { setUploading(''); }
   }
 
   return <>
-    <PanelHeader title="Publish a report or tool" body="Drop Cowork HTML here to go live without a redeploy. For a versioned container release, use npm run artifacts:import instead." action={<button className="button primary" onClick={() => setShowPublish((value) => !value)}><Upload size={16} /> Publish</button>} />
+    <PanelHeader title="Publish a report or tool" body="Drop Cowork HTML here to go live without a redeploy, or paste an HTTPS URL to link an existing app. For a versioned container release, use npm run artifacts:import instead." action={<div className="panel-heading-actions"><button className="button" type="button" onClick={() => { setShowPublish(false); setShowLink((value) => !value); }}><Link2 size={16} /> Link an app</button><button className="button primary" type="button" onClick={() => { setShowLink(false); setShowPublish((value) => !value); }}><Upload size={16} /> Publish</button></div>} />
+    {showLink && <form className="publish-form" onSubmit={(event) => void linkApp(event)}>
+      <label>Title<input required name="title" /></label>
+      <label>Description<input required name="description" /></label>
+      <label>Kind<select name="kind" defaultValue="tool"><option value="tool">Tool</option><option value="report">Report</option></select></label>
+      <label>Owner<input required name="owner" /></label>
+      <div className="icon-picker-field"><span>Icon</span><ArtifactIconPicker name="icon" defaultValue="wrench" /></div>
+      <label className="publish-url">App URL<input required name="url" type="url" placeholder="https://" autoComplete="off" /></label>
+      <p className="publish-hint">The destination app keeps its own sign-in. Microsoft Entra apps such as Better Buying will prompt in the new tab. After linking, grant access on the Access matrix.</p>
+      <button className="button primary" disabled={linking}>{linking ? 'Linking…' : 'Link now'}</button>
+    </form>}
     {showPublish && <form className="publish-form" onSubmit={(event) => void publish(event)}>
       <label>Title<input required name="title" /></label>
       <label>Description<input required name="description" /></label>
@@ -305,13 +341,14 @@ Do not use live APIs, modules, workers, WebSockets, or embedded external applica
       const primaryBinding = snapshot.qlikBindings.find((item) => item.artifactId === artifact.id && item.datasetKey === primaryDatasetKey);
       return <article key={artifact.id}>
         <span className={`artifact-icon accent-${artifact.accent}`}><ArtifactIcon name={artifact.icon} kind={artifact.kind} /></span>
-        {editingId === artifact.id ? <form className="artifact-edit-form" onSubmit={(event) => void saveMetadata(event, artifact.id)}><label>Title<input required name="title" defaultValue={artifact.title} /></label><label>Description<input required name="description" defaultValue={artifact.description} /></label><label>Owner<input required name="owner" defaultValue={artifact.owner} /></label><label className="publish-check"><input type="checkbox" name="downloads" defaultChecked={artifact.capabilities.includes('downloads')} /> Allow generated file downloads</label><div className="icon-picker-field"><span>Icon</span><ArtifactIconPicker name="icon" defaultValue={artifact.icon ?? defaultArtifactIcon(artifact.kind)} /></div><div className="artifact-edit-actions"><button className="button primary" disabled={Boolean(uploading)}><Check size={15} /> Save</button><button className="button" type="button" onClick={() => setEditingId('')}><X size={15} /> Cancel</button></div></form> : <div className="artifact-admin-copy"><h3>{artifact.title}</h3><p>{artifact.slug} · owned by {artifact.owner}{primaryDatasetKey ? ` · ${qlikSourceStatus(primaryBinding)}` : ''}</p></div>}
+        {editingId === artifact.id ? <form className="artifact-edit-form" onSubmit={(event) => void saveMetadata(event, artifact.id)}><label>Title<input required name="title" defaultValue={artifact.title} /></label><label>Description<input required name="description" defaultValue={artifact.description} /></label><label>Owner<input required name="owner" defaultValue={artifact.owner} /></label>{artifact.source === 'linked' ? <label className="publish-url">App URL<input required name="url" type="url" defaultValue={artifact.entryUrl} autoComplete="off" /></label> : <label className="publish-check"><input type="checkbox" name="downloads" defaultChecked={artifact.capabilities.includes('downloads')} /> Allow generated file downloads</label>}<div className="icon-picker-field"><span>Icon</span><ArtifactIconPicker name="icon" defaultValue={artifact.icon ?? defaultArtifactIcon(artifact.kind)} /></div><div className="artifact-edit-actions"><button className="button primary" disabled={Boolean(uploading)}><Check size={15} /> Save</button><button className="button" type="button" onClick={() => setEditingId('')}><X size={15} /> Cancel</button></div></form> : <div className="artifact-admin-copy"><h3>{artifact.title}</h3><p>{artifact.slug} · owned by {artifact.owner}{artifact.source === 'linked' ? ` · ${linkedAppHost(artifact.entryUrl)}` : primaryDatasetKey ? ` · ${qlikSourceStatus(primaryBinding)}` : ''}</p></div>}
         {editingId !== artifact.id && <>
-          <div className="artifact-admin-badges"><span className="version-pill">v{artifact.version}</span><span className="source-pill">{artifact.source === 'uploaded' ? artifact.isActive === false ? 'Unpublished' : 'Published live' : 'Ships in the container'}</span></div>
+          <div className="artifact-admin-badges"><span className="version-pill">v{artifact.version}</span><span className="source-pill">{librarySourceLabel(artifact)}</span></div>
           <div className="artifact-admin-actions">
-            {primaryDatasetKey && <QlikSourceLaunch artifact={artifact} datasetKey={primaryDatasetKey} binding={primaryBinding} />}
-            {artifact.source === 'uploaded' && <button className="button" disabled={Boolean(uploading)} onClick={() => setEditingId(artifact.id)}><Pencil size={15} /> Edit details</button>}
-            {(artifact.source === 'uploaded' || datasetKeys.length > 0) && <details className="artifact-actions-menu">
+            {primaryDatasetKey && artifact.source !== 'linked' && <QlikSourceLaunch artifact={artifact} datasetKey={primaryDatasetKey} binding={primaryBinding} />}
+            {(artifact.source === 'uploaded' || artifact.source === 'linked') && <button className="button" disabled={Boolean(uploading)} onClick={() => setEditingId(artifact.id)}><Pencil size={15} /> Edit details</button>}
+            {artifact.source === 'linked' && <button className="button danger" disabled={Boolean(uploading)} onClick={() => { void (async () => { if (await confirm({ title: `Permanently delete ${artifact.title}?`, body: 'Its assignments and notifications will also be removed. This cannot be undone.', confirmLabel: 'Delete', danger: true })) await deleteArtifact(artifact.id, artifact.title); })(); }}>Delete</button>}
+            {(artifact.source === 'uploaded' || datasetKeys.length > 0) && artifact.source !== 'linked' && <details className="artifact-actions-menu">
               <summary role="button" aria-label={`More actions for ${artifact.title}`} title="More actions"><MoreHorizontal size={18} /></summary>
               <div className="artifact-actions-popover">
                 {artifact.source === 'uploaded' && <label>Replace HTML<input hidden disabled={Boolean(uploading)} type="file" accept=".html,.htm,.zip,text/html,application/zip" onChange={(event) => { const input = event.currentTarget; void replaceBundle(artifact.id, input.files?.[0]).finally(() => { input.value = ''; }); }} /></label>}
@@ -327,6 +364,12 @@ Do not use live APIs, modules, workers, WebSockets, or embedded external applica
       </article>;
     })}</div>
   </>;
+}
+
+function librarySourceLabel(artifact: ArtifactSummary) {
+  if (artifact.source === 'linked') return 'Linked app';
+  if (artifact.source === 'uploaded') return artifact.isActive === false ? 'Unpublished' : 'Published live';
+  return 'Ships in the container';
 }
 
 function QlikSourceLaunch({ artifact, datasetKey, binding }: { artifact: ArtifactSummary; datasetKey: string; binding?: QlikDatasetBinding }) {

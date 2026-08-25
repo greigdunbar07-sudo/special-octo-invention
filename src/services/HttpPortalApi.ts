@@ -120,6 +120,9 @@ export class HttpPortalApi implements PortalApi {
     for (const file of input.jsonFiles ?? []) data.append('json', file);
     return request<ArtifactSummary>('/api/admin/artifacts', { method: 'POST', body: data });
   }
+  linkArtifact(input: Parameters<PortalApi['linkArtifact']>[0]) {
+    return request<ArtifactSummary>('/api/admin/artifacts/links', { method: 'POST', body: JSON.stringify(input) });
+  }
   replaceArtifactBundle(id: string, input: { html?: File; zip?: File; jsonFiles?: File[] }) {
     const data = new FormData();
     if (input.html) data.set('file', input.html);
